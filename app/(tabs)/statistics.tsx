@@ -2,7 +2,7 @@ import Chart from "@/components/ui/Chart";
 import DropdownMenu from "@/components/ui/DropdownMenu";
 import MeasurementCard from "@/components/ui/MeasurementCard";
 import SummaryCard from "@/components/ui/SummaryCard";
-import { MONTH_OPTIONS, YEAR_OPTIONS } from "@/constants/imp";
+import { MONTH_OPTIONS, YEAR_OPTIONS } from "@/constants/config";
 import { Measurement } from "@/constants/types";
 import { useColors } from "@/hooks/useColors";
 import { hp, wp } from "@/hooks/useResponsive";

@@ -1,11 +1,15 @@
-import { MoonIcon, SettingsIcon } from "@/components/icons";
+import { BluetoothIcon, ChevronIcon, MoonIcon, SettingsIcon } from "@/components/icons";
+import DeviceScanModal from "@/components/ui/DeviceScanModal";
+import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
 import { hp, wp } from "@/hooks/useResponsive";
-import React from "react";
+import React, { useState } from "react";
 import {
+  ActivityIndicator,
   ScrollView,
   Switch,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -60,6 +64,7 @@ function SettingRow({
   title,
   subtitle,
   right,
+  onPress,
   showBorder = true,
 }: {
   icon: React.ReactNode;
@@ -67,11 +72,14 @@ function SettingRow({
   title: string;
   subtitle?: string;
   right?: React.ReactNode;
+  onPress?: () => void;
   showBorder?: boolean;
 }) {
   const colors = useColors();
   return (
-    <View
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={onPress ? 0.7 : 1}
       className="flex-row items-center"
       style={{
         paddingHorizontal: wp(4),
@@ -103,7 +111,7 @@ function SettingRow({
       </View>
 
       {right}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -111,6 +119,28 @@ function SettingRow({
 
 export default function Settings() {
   const colors = useColors();
+  const { isConnected, isScanning, isConnecting, deviceName, startScan, disconnectDevice } = useBle();
+  const [scanModalVisible, setScanModalVisible] = useState(false);
+
+  const bleStatusColor = isConnected
+    ? colors.deviceConnected
+    : isConnecting || isScanning
+    ? "#F59E0B"
+    : colors.deviceDisconnected;
+
+  const bleStatusText = isConnected
+    ? "Connected"
+    : isConnecting
+    ? "Connecting..."
+    : isScanning
+    ? "Scanning..."
+    : "Disconnected";
+
+  const bleSubtitle = isConnected
+    ? `Device: ${deviceName ?? "Unknown Device"}`
+    : isConnecting || isScanning
+    ? "Please wait..."
+    : "Tap to connect your device";
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }} edges={["top"]}>
@@ -226,6 +256,64 @@ export default function Settings() {
           />
         </Section>
 
+        {/* Device — BLE */}
+        <SectionLabel title="Device" marginTop />
+        <Section>
+          <SettingRow
+            icon={<BluetoothIcon color="#fff" size={18} />}
+            iconBg={bleStatusColor}
+            title="Bluetooth"
+            subtitle={bleSubtitle}
+            showBorder={isConnected}
+            onPress={!isConnected && !isScanning && !isConnecting
+              ? () => setScanModalVisible(true)
+              : undefined
+            }
+            right={
+              isScanning || isConnecting ? (
+                <ActivityIndicator size="small" color={bleStatusColor} />
+              ) : isConnected ? (
+                <View className="flex-row items-center" style={{ gap: wp(2) }}>
+                  <View
+                    style={{
+                      width: wp(2),
+                      height: wp(2),
+                      borderRadius: wp(1),
+                      backgroundColor: colors.deviceConnected,
+                    }}
+                  />
+                  <Text style={{ fontSize: wp(3.2), fontWeight: "600", color: colors.deviceConnected }}>
+                    {bleStatusText}
+                  </Text>
+                </View>
+              ) : (
+                <ChevronIcon color={colors.secondaryText} size={wp(4)} />
+              )
+            }
+          />
+
+          {isConnected && (
+            <SettingRow
+              icon={
+                <View
+                  style={{
+                    width: wp(2),
+                    height: wp(2),
+                    borderRadius: wp(1),
+                    backgroundColor: colors.deviceDisconnected,
+                  }}
+                />
+              }
+              iconBg={colors.deviceDisconnected + "22"}
+              title="Disconnect"
+              subtitle="Remove device connection"
+              showBorder={false}
+              onPress={disconnectDevice}
+              right={<ChevronIcon color={colors.secondaryText} size={wp(4)} />}
+            />
+          )}
+        </Section>
+
         {/* Footer */}
         <View className="items-center" style={{ marginTop: hp(4) }}>
           <Text style={{ fontSize: wp(3), color: colors.secondaryText }}>
@@ -236,6 +324,10 @@ export default function Settings() {
           </Text>
         </View>
       </ScrollView>
+      <DeviceScanModal
+        visible={scanModalVisible}
+        onClose={() => setScanModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }
