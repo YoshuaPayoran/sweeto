@@ -17,9 +17,9 @@ export const STORAGE_KEYS = {
 // ⚠️ MUST MATCH YOUR ESP32 FIRMWARE EXACTLY
 // Verify with nRF Connect app → check the service UUIDs
 export const BLE_UUIDS = {
-  SERVICE:    "12345678-1234-1234-1234-123456789abc", // 🔄 replace with real UUID
-  IMPEDANCE:  "12345678-1234-1234-1234-123456789abd", // 🔄 replace with real UUID
-  PHASE_ANGLE:"12345678-1234-1234-1234-123456789abe", // 🔄 replace with real UUID
+  SERVICE:    "12345678-1234-1234-1234-1234567890ab", // 🔄 replace with real UUID
+  IMPEDANCE:  "abcd1234-5678-90ab-cdef-1234567890ab", // 🔄 replace with real UUID
+  PHASE_ANGLE:"abcd1234-5678-90ab-cdef-1234567890ac", // 🔄 replace with real UUID
 } as const;
 
 // ─── Assessment ───────────────────────────────────────────────────────────────
@@ -30,24 +30,4 @@ export const ASSESSMENT_STEPS = [
   { label: "Finalizing", detail: "Preparing your result" },
 ] as const;
 
-// ─── Statistics dropdowns ─────────────────────────────────────────────────────
-export const MONTH_OPTIONS = [
-  { label: "January",   value: "january"   },
-  { label: "February",  value: "february"  },
-  { label: "March",     value: "march"     },
-  { label: "April",     value: "april"     },
-  { label: "May",       value: "may"       },
-  { label: "June",      value: "june"      },
-  { label: "July",      value: "july"      },
-  { label: "August",    value: "august"    },
-  { label: "September", value: "september" },
-  { label: "October",   value: "october"   },
-  { label: "November",  value: "november"  },
-  { label: "December",  value: "december"  },
-] as const;
 
-export const YEAR_OPTIONS = [
-  { label: "2024", value: "2024" },
-  { label: "2025", value: "2025" },
-  { label: "2026", value: "2026" },
-] as const;

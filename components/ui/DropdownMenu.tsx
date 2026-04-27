@@ -12,15 +12,16 @@ type Props = {
   options: Option[];
   placeholder?: string;
   onSelect: (value: string) => void;
+  value?: string | null;
 };
 
 export default function DropdownMenu({
   options,
   placeholder = "Select an option",
   onSelect,
+  value: externalValue,
 }: Props) {
   const colors = useColors();
-  const [value, setValue] = useState<string | null>(null);
   const [isFocus, setIsFocus] = useState(false);
 
   const borderColor = isFocus ? colors.primary : colors.borderColor;
@@ -31,13 +32,12 @@ export default function DropdownMenu({
       labelField="label"
       valueField="value"
       placeholder={placeholder}
-      value={value}
+      value={externalValue ?? null} 
       onFocus={() => setIsFocus(true)}
       onBlur={() => setIsFocus(false)}
       onChange={(item) => {
-        setValue(item.value);
         setIsFocus(false);
-        onSelect(item.value);
+        onSelect(item.value);       
       }}
       style={{
         backgroundColor: colors.cardColor,

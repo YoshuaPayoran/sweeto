@@ -1,21 +1,22 @@
+import { getMeasurementStats } from "@/db";
 import { useColors } from "@/hooks/useColors";
 import { hp, wp } from "@/hooks/useResponsive";
 import { Text, View } from "react-native";
 
-// ─── Placeholder ──────────────────────────────────────────────────────────────
-// 🔄 REPLACE with real data from SQLite / local storage
-const PLACEHOLDER_DATA = {
-  total: 205,
-  good: 60,
-  poor: 40,
-};
-// ─────────────────────────────────────────────────────────────────────────────
-
 export default function TotalScannedCard() {
   const colors = useColors();
 
-  // 🔄 Swap PLACEHOLDER_DATA with your data hook / prop
-  const { total, good, poor } = PLACEHOLDER_DATA;
+  // Fetch current month's stats from SQLite
+  const now   = new Date();
+  const month = now.getMonth() + 1;
+  const year  = now.getFullYear();
+  const { good, poor, total } = getMeasurementStats(month, year);
+
+  // Current month label e.g. "April 2026"
+  const monthLabel = now.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 
   return (
     <View
@@ -38,17 +39,19 @@ export default function TotalScannedCard() {
           <Text style={{ fontSize: wp(3), color: colors.secondaryText, fontWeight: "600" }}>
             TOTAL SCANNED
           </Text>
+          {/* Dynamic current month label */}
           <Text style={{ fontSize: wp(3), color: colors.primaryText, fontWeight: "600" }}>
-            March 2026
+            {monthLabel}
           </Text>
         </View>
 
+        {/* Dynamic total count */}
         <Text style={{ fontSize: wp(8), color: colors.primaryText, fontWeight: "bold" }}>
           {total}
         </Text>
       </View>
 
-      {/* Segmented Progress Bar */}
+      {/* Segmented Progress Bar — falls back gracefully when total is 0 */}
       <View
         className="flex-row overflow-hidden"
         style={{
@@ -58,19 +61,26 @@ export default function TotalScannedCard() {
           gap: wp(1),
         }}
       >
-        <View style={{ flex: good, backgroundColor: colors.deviceConnected }} />
-        <View style={{ flex: poor, backgroundColor: colors.deviceDisconnected }} />
+        {total === 0 ? (
+          // Empty state bar when no data
+          <View style={{ flex: 1, backgroundColor: colors.borderColor }} />
+        ) : (
+          <>
+            <View style={{ flex: good, backgroundColor: colors.deviceConnected }} />
+            <View style={{ flex: poor, backgroundColor: colors.deviceDisconnected }} />
+          </>
+        )}
       </View>
 
-      {/* Legend */}
+      {/* Legend with live counts */}
       <View
         className="flex-row justify-center"
         style={{ marginTop: hp(1.5), gap: wp(6) }}
       >
         {[
-          { label: "Good", color: colors.deviceConnected },
-          { label: "Poor", color: colors.deviceDisconnected },
-        ].map(({ label, color }) => (
+          { label: "Good", color: colors.deviceConnected, count: good },
+          { label: "Poor", color: colors.deviceDisconnected, count: poor },
+        ].map(({ label, color, count }) => (
           <View key={label} className="flex-row items-center" style={{ gap: wp(1.5) }}>
             <View
               style={{
@@ -80,7 +90,9 @@ export default function TotalScannedCard() {
                 backgroundColor: color,
               }}
             />
-            <Text style={{ fontSize: wp(3), color: colors.secondaryText }}>{label}</Text>
+            <Text style={{ fontSize: wp(3), color: colors.secondaryText }}>
+              {label} ({count})
+            </Text>
           </View>
         ))}
       </View>

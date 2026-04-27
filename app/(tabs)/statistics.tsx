@@ -2,37 +2,36 @@ import Chart from "@/components/ui/Chart";
 import DropdownMenu from "@/components/ui/DropdownMenu";
 import MeasurementCard from "@/components/ui/MeasurementCard";
 import SummaryCard from "@/components/ui/SummaryCard";
-import { MONTH_OPTIONS, YEAR_OPTIONS } from "@/constants/config";
-import { Measurement } from "@/constants/types";
+import { getAvailableMonths, getAvailableYears, getMeasurementsByMonthYear, getMeasurementStats } from "@/db";
 import { useColors } from "@/hooks/useColors";
 import { hp, wp } from "@/hooks/useResponsive";
 import { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// ─── Placeholder ──────────────────────────────────────────────────────────────
-// 🔄 REPLACE with real data from SQLite
-const PLACEHOLDER_MEASUREMENTS: Measurement[] = [
-  { id: "1", quality: "good", impedanceMagnitude: 120.45, phaseAngle: -23.5,  frequency: 1000, datetime: "2026-03-08T10:30:00.000Z" },
-  { id: "2", quality: "poor", impedanceMagnitude: 89.12,  phaseAngle: -45.2,  frequency: 1000, datetime: "2026-03-08T11:15:00.000Z" },
-  { id: "3", quality: "good", impedanceMagnitude: 115.80, phaseAngle: -20.1,  frequency: 1000, datetime: "2026-03-07T09:00:00.000Z" },
-];
-
-const PLACEHOLDER_STATS = { goodCount: 2, poorCount: 1, total: 3 };
-// ─────────────────────────────────────────────────────────────────────────────
+const currentYear  = String(new Date().getFullYear());
+const currentMonth = String(new Date().getMonth() + 1).padStart(2, "0");
 
 export default function Statistics() {
   const colors = useColors();
 
-  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
-  const [selectedYear, setSelectedYear] = useState<string | null>(null);
+  const [selectedYear,  setSelectedYear]  = useState<string>(currentYear);
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentMonth);
 
-  // 🔄 Swap these with your SQLite query results
-  const { goodCount, poorCount, total } = PLACEHOLDER_STATS;
-  const measurements = PLACEHOLDER_MEASUREMENTS;
+  // Dynamically loaded dropdown options from SQLite
+  const yearOptions  = getAvailableYears();
+  const monthOptions = getAvailableMonths(selectedYear);
 
-  const goodPercent = total > 0 ? Math.round((goodCount / total) * 100) : 0;
-  const poorPercent = total > 0 ? Math.round((poorCount / total) * 100) : 0;
+  // Fetch measurements and stats based on selected month and year
+  const measurements = getMeasurementsByMonthYear(
+    parseInt(selectedMonth),
+    parseInt(selectedYear)
+  );
+
+  const { good, poor, total } = getMeasurementStats(
+    parseInt(selectedMonth),
+    parseInt(selectedYear)
+  );
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }} edges={["top"]}>
@@ -58,40 +57,46 @@ export default function Statistics() {
         <View className="flex-row" style={{ gap: wp(3), marginBottom: hp(2) }}>
           <View className="flex-1">
             <DropdownMenu
-              options={MONTH_OPTIONS as any}
+              options={monthOptions}
               placeholder="Select month"
+              value={selectedMonth}
               onSelect={(value) => setSelectedMonth(value)}
             />
           </View>
           <View className="flex-1">
             <DropdownMenu
-              options={YEAR_OPTIONS as any}
+              options={yearOptions}
               placeholder="Select year"
-              onSelect={(value) => setSelectedYear(value)}
+              value={selectedYear}
+              onSelect={(value) => {
+                setSelectedYear(value);
+                // Reset to January when switching to a different year
+                setSelectedMonth("01");
+              }}
             />
           </View>
         </View>
 
-        {/* Distribution chart */}
-        <Chart />
+        {/* Distribution chart — passes live data */}
+        <Chart good={good} poor={poor} total={total} />
 
-        {/* Summary cards */}
+        {/* Summary cards — live percentages */}
         <View style={{ gap: hp(1.5), marginTop: hp(2) }}>
           <SummaryCard
             imgsrc={require("@/assets/images/goodpotato.png")}
             qualityLabel="Good Quality"
-            value={goodPercent}
+            value={good}
             accentColor={colors.deviceConnected}
           />
           <SummaryCard
             imgsrc={require("@/assets/images/poorpotato.png")}
             qualityLabel="Poor Quality"
-            value={poorPercent}
+            value={poor}
             accentColor={colors.deviceDisconnected}
           />
         </View>
 
-        {/* Measurement history */}
+        {/* Measurement history — filtered by selected month and year */}
         <View style={{ marginTop: hp(3) }}>
           <Text
             style={{
@@ -103,11 +108,49 @@ export default function Statistics() {
           >
             Measurements
           </Text>
-          <View style={{ gap: hp(1.5), marginTop: hp(2) }}>
-            {measurements.map((item) => (
-              <MeasurementCard key={item.id} item={item} />
-            ))}
-          </View>
+
+          {measurements.length === 0 ? (
+            <View
+              className="items-center"
+              style={{ paddingVertical: hp(4), gap: hp(1) }}
+            >
+              <Text style={{ fontSize: wp(3.5), color: colors.secondaryText }}>
+                No measurements found
+              </Text>
+              <Text
+                style={{
+                  fontSize: wp(3),
+                  color: colors.secondaryText,
+                  textAlign: "center",
+                  paddingHorizontal: wp(8),
+                }}
+              >
+                No data recorded for the selected month and year
+              </Text>
+            </View>
+          ) : (
+            // Fixed height scrollable container — shows ~3 cards then scrolls
+            <ScrollView
+              style={{ maxHeight: hp(55), marginTop: hp(2) }}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled                   // ← required for scroll inside scroll
+              contentContainerStyle={{ gap: hp(1.5), paddingBottom: hp(0.5) }}
+            >
+              {measurements.map((item) => (
+                <MeasurementCard
+                  key={item.id}
+                  item={{
+                    id: String(item.id),
+                    quality: item.quality,
+                    impedanceMagnitude: item.impedance,
+                    phaseAngle: item.phase_angle,
+                    frequency: item.frequency,
+                    datetime: item.datetime,
+                  }}
+                />
+              ))}
+            </ScrollView>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>

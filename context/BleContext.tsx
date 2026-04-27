@@ -43,6 +43,7 @@ type BleContextType = {
   disconnectDevice: () => Promise<void>;
   readImpedance: () => Promise<number | null>;
   readPhaseAngle: () => Promise<number | null>;
+  requestPermissions: () => Promise<boolean>;
 };
 
 const BleContext = createContext<BleContextType>({} as BleContextType);
@@ -178,6 +179,7 @@ export function BleProvider({ children }: { children: React.ReactNode }) {
       disconnectDevice,
       readImpedance,
       readPhaseAngle,
+      requestPermissions: requestBlePermissions,
     }}>
       {children}
     </BleContext.Provider>

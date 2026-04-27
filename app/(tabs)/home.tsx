@@ -1,9 +1,11 @@
 import { BluetoothIcon, MoonIcon, SunIcon } from "@/components/icons";
 import Button from "@/components/ui/Button";
 import TotalScannedCard from "@/components/ui/TotalScannedCard";
+import { BLE_UUIDS } from "@/constants/config";
 import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
 import { hp, wp } from "@/hooks/useResponsive";
+import { Buffer } from "buffer";
 import { useEffect, useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -11,6 +13,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function Home() {
   const colors = useColors();
   const { connectedDevice } = useBle();
+  const [impedance, setImpedance] = useState<number | null>(null);
+  const [phase, setPhase] = useState<number | null>(null);
 
   const [now, setNow] = useState(new Date());
 
@@ -45,6 +49,44 @@ export default function Home() {
   const badgeLabel = connectedDevice
     ? "Connected"
     : "Not Connected";
+
+  const startAssessment = async () => {
+    if (!connectedDevice) return;
+
+    try {
+      // Send "start" command to ESP32
+      await connectedDevice.writeCharacteristicWithResponseForService(
+        BLE_UUIDS.SERVICE,
+        BLE_UUIDS.IMPEDANCE,
+        Buffer.from("start").toString("base64")
+      );
+      console.log("Command sent");
+
+      // Small delay before reading (allow ESP32 to notify)
+      setTimeout(async () => {
+        // Read impedance
+        const impChar = await connectedDevice.readCharacteristicForService(
+          BLE_UUIDS.SERVICE,
+          BLE_UUIDS.IMPEDANCE
+        );
+        const impValue = Buffer.from(impChar.value!, "base64").readFloatLE(0);
+        setImpedance(impValue);
+
+        // Read phase
+        const phaseChar = await connectedDevice.readCharacteristicForService(
+          BLE_UUIDS.SERVICE,
+          BLE_UUIDS.PHASE_ANGLE
+        );
+        const phaseValue = Buffer.from(phaseChar.value!, "base64").readFloatLE(0);
+        setPhase(phaseValue);
+
+        console.log("BLE data received:", { impedance: impValue, phase: phaseValue });
+      }, 500);
+
+    } catch (e) {
+      console.error("BLE error:", e);
+    }
+  };
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }} edges={["top"]}>
@@ -115,7 +157,7 @@ export default function Home() {
 
         {/* Start Assessment CTA */}
         <View style={{ marginTop: hp(2) }}>
-          <Button label="Start Assessment" onPress={() => {}} />
+          <Button label="Start Assessment" onPress={startAssessment} />
         </View>
 
         {/* This month section */}

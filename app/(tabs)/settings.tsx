@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { State } from "react-native-ble-plx";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // ─── Local sub-components ─────────────────────────────────────────────────────
@@ -119,7 +120,7 @@ function SettingRow({
 
 export default function Settings() {
   const colors = useColors();
-  const { isConnected, isScanning, isConnecting, deviceName, startScan, disconnectDevice } = useBle();
+  const { isConnected, isScanning, isConnecting, deviceName, startScan, disconnectDevice, bleState } = useBle();
   const [scanModalVisible, setScanModalVisible] = useState(false);
 
   const bleStatusColor = isConnected
@@ -140,7 +141,15 @@ export default function Settings() {
     ? `Device: ${deviceName ?? "Unknown Device"}`
     : isConnecting || isScanning
     ? "Please wait..."
+    : bleState !== State.PoweredOn
+    ? "Turn on your Bluetooth"       
     : "Tap to connect your device";
+
+  const deviceStatusColor = isConnected
+    ? colors.deviceConnected
+    : colors.deviceDisconnected;
+
+  const deviceStatusLabel = isConnected ? "Active" : "Inactive";
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }} edges={["top"]}>
@@ -211,15 +220,15 @@ export default function Settings() {
                   width: wp(2),
                   height: wp(2),
                   borderRadius: wp(1),
-                  backgroundColor: colors.deviceConnected,
+                  backgroundColor: deviceStatusColor,
                 }}
               />
             }
             iconBg={colors.deviceConnected + "22"}
             title="Device Status"
             right={
-              <Text style={{ fontSize: wp(3.2), fontWeight: "600", color: colors.deviceConnected }}>
-                Active
+              <Text style={{ fontSize: wp(3.2), fontWeight: "600", color: deviceStatusColor }}>
+                {deviceStatusLabel}
               </Text>
             }
           />
@@ -265,7 +274,7 @@ export default function Settings() {
             title="Bluetooth"
             subtitle={bleSubtitle}
             showBorder={isConnected}
-            onPress={!isConnected && !isScanning && !isConnecting
+            onPress={!isConnected && !isScanning && !isConnecting && bleState === State.PoweredOn
               ? () => setScanModalVisible(true)
               : undefined
             }

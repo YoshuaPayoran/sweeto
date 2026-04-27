@@ -3,16 +3,14 @@ import { hp, wp } from "@/hooks/useResponsive";
 import { Text, View } from "react-native";
 import { PieChart } from "react-native-gifted-charts";
 
-// ─── Placeholder ──────────────────────────────────────────────────────────────
-// 🔄 REPLACE with real data from SQLite / local storage
-const PLACEHOLDER_DATA = {
-  good: 60,
-  poor: 40,
-  total: 205,
+type Props = {
+  good: number;
+  poor: number;
+  total: number;
 };
-// ─────────────────────────────────────────────────────────────────────────────
 
 function LegendItem({ color, label }: { color: string; label: string }) {
+  const colors = useColors();
   return (
     <View className="items-start" style={{ gap: hp(0.5) }}>
       <View className="flex-row items-center" style={{ gap: wp(1.5) }}>
@@ -31,16 +29,15 @@ function LegendItem({ color, label }: { color: string; label: string }) {
   );
 }
 
-export default function Chart() {
+export default function Chart({ good, poor, total }: Props) {
   const colors = useColors();
 
-  // 🔄 Swap with your data hook / prop
-  const data = PLACEHOLDER_DATA;
-
-  const chartData = [
-    { value: data.good, color: colors.deviceConnected,    text: `${data.good}%` },
-    { value: data.poor, color: colors.deviceDisconnected, text: `${data.poor}%` },
-  ];
+  const chartData = total === 0
+    ? [{ value: 1, color: colors.borderColor }]   // ← remove text from here
+    : [
+        { value: good, color: colors.deviceConnected,    text: `${Math.round((good / total) * 100)}%` },
+        { value: poor, color: colors.deviceDisconnected, text: `${Math.round((poor / total) * 100)}%` },
+      ];
 
   return (
     <View
@@ -69,6 +66,7 @@ export default function Chart() {
         Distribution Overview
       </Text>
 
+      {/* Pie chart with centered "No data" label when empty */}
       <View className="items-center">
         <PieChart
           donut
@@ -78,13 +76,27 @@ export default function Chart() {
           innerCircleColor={colors.cardColor}
           strokeColor={colors.cardColor}
           strokeWidth={5}
-          showText
+          showText={total > 0}
           textColor={colors.primaryText}
           textSize={wp(3.2)}
           fontWeight="bold"
           labelsPosition="outward"
           showValuesAsLabels
           extraRadius={wp(6)}
+          centerLabelComponent={() =>      
+            total === 0 ? (
+              <Text
+                style={{
+                  fontSize: wp(3),
+                  color: colors.secondaryText,
+                  fontWeight: "600",
+                  textAlign: "center",
+                }}
+              >
+                No data
+              </Text>
+            ) : null
+          }
         />
       </View>
 
