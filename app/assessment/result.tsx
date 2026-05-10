@@ -1,258 +1,326 @@
-import { useBle } from "@/context/BleContext";
+import {
+  DEFAULT_VARIETY,
+  getVarietyById,
+  isValidVarietyId,
+  VarietyId,
+} from "@/constants/varieties";
+import { insertMeasurement } from "@/db";
 import { useColors } from "@/hooks/useColors";
 import { hp, wp } from "@/hooks/useResponsive";
-import { router } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Text, View } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useRef } from "react";
+import { Animated, Easing, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Svg, { Circle } from "react-native-svg";
+import Svg, { Circle, Polyline } from "react-native-svg";
 
-// ─── Stage definitions ────────────────────────────────────────────────────────
-const STAGES = [
-  { label: "Applying Signal",    detail: "Generating AC signal through electrodes" },
-  { label: "Reading Impedance",  detail: "Measuring voltage response from AD5933"  },
-  { label: "Calculating Phase",  detail: "Computing phase angle from real/imaginary" },
-  { label: "AI Analyzing",       detail: "Running AI model on measurement data"    },
-] as const;
-
-// ─── Circular progress ring ───────────────────────────────────────────────────
-const RING_SIZE   = wp(55);
-const STROKE      = 8;
-const RADIUS      = (RING_SIZE - STROKE) / 2;
+const CIRCLE_SIZE = wp(40);
+const STROKE = 7;
+const RADIUS = (CIRCLE_SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-function CircularProgress({ percent, color }: { percent: number; color: string }) {
-  const animPercent = useRef(new Animated.Value(0)).current;
+function ResultCircle({
+  quality,
+  accentColor,
+}: {
+  quality: "good" | "poor";
+  accentColor: string;
+}) {
+  const drawAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.7)).current;
+  const opacAnim = useRef(new Animated.Value(0)).current;
+  const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
   useEffect(() => {
-    Animated.timing(animPercent, {
-      toValue: percent,
-      duration: 600,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: false,
-    }).start();
-  }, [percent]);
+    Animated.sequence([
+      Animated.timing(drawAnim, {
+        toValue: 1,
+        duration: 800,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: false,
+      }),
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 5,
+          tension: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, []);
 
-  const strokeDashoffset = animPercent.interpolate({
-    inputRange:  [0, 100],
+  const strokeDashoffset = drawAnim.interpolate({
+    inputRange: [0, 1],
     outputRange: [CIRCUMFERENCE, 0],
   });
 
   return (
-    <View style={{ width: RING_SIZE, height: RING_SIZE, alignItems: "center", justifyContent: "center" }}>
-      <Svg width={RING_SIZE} height={RING_SIZE} style={{ position: "absolute" }}>
-        {/* Background ring */}
+    <View
+      style={{
+        width: CIRCLE_SIZE,
+        height: CIRCLE_SIZE,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Svg width={CIRCLE_SIZE} height={CIRCLE_SIZE} style={{ position: "absolute" }}>
         <Circle
-          cx={RING_SIZE / 2}
-          cy={RING_SIZE / 2}
+          cx={CIRCLE_SIZE / 2}
+          cy={CIRCLE_SIZE / 2}
           r={RADIUS}
-          stroke={color + "22"}
+          stroke={accentColor + "22"}
           strokeWidth={STROKE}
           fill="none"
         />
       </Svg>
 
-      {/* Animated foreground ring */}
-      <Animated.View style={{ position: "absolute" }}>
-        <Svg
-          width={RING_SIZE}
-          height={RING_SIZE}
-          style={{ transform: [{ rotate: "-90deg" }] }}
-        >
-          <AnimatedCircle
-            cx={RING_SIZE / 2}
-            cy={RING_SIZE / 2}
-            r={RADIUS}
-            stroke={color}
-            strokeWidth={STROKE}
-            fill="none"
-            strokeDasharray={`${CIRCUMFERENCE}`}
-            strokeDashoffset={strokeDashoffset}
-            strokeLinecap="round"
-          />
+      <Svg
+        width={CIRCLE_SIZE}
+        height={CIRCLE_SIZE}
+        style={{ position: "absolute", transform: [{ rotate: "-90deg" }] }}
+      >
+        <AnimatedCircle
+          cx={CIRCLE_SIZE / 2}
+          cy={CIRCLE_SIZE / 2}
+          r={RADIUS}
+          stroke={accentColor}
+          strokeWidth={STROKE}
+          fill="none"
+          strokeDasharray={`${CIRCUMFERENCE}`}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+        />
+      </Svg>
+
+      <Animated.View
+        style={{
+          opacity: opacAnim,
+          transform: [{ scale: scaleAnim }],
+          width: CIRCLE_SIZE * 0.55,
+          height: CIRCLE_SIZE * 0.55,
+          borderRadius: CIRCLE_SIZE,
+          backgroundColor: accentColor + "18",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: hp(0.5),
+        }}
+      >
+        <Svg width={wp(7)} height={wp(7)} viewBox="0 0 24 24">
+          {quality === "good" ? (
+            <Polyline
+              points="4,12 9,17 20,7"
+              stroke={accentColor}
+              strokeWidth={2.5}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ) : (
+            <>
+              <Polyline
+                points="6,6 18,18"
+                stroke={accentColor}
+                strokeWidth={2.5}
+                fill="none"
+                strokeLinecap="round"
+              />
+              <Polyline
+                points="18,6 6,18"
+                stroke={accentColor}
+                strokeWidth={2.5}
+                fill="none"
+                strokeLinecap="round"
+              />
+            </>
+          )}
         </Svg>
+
+        <Text style={{ fontSize: wp(3.5), fontWeight: "700", color: accentColor }}>
+          {quality === "good" ? "Good" : "Poor"}
+        </Text>
       </Animated.View>
     </View>
   );
 }
 
-// Animated circle component for SVG stroke dash
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
-// ─── Bouncing dots ────────────────────────────────────────────────────────────
-function BouncingDots({ color }: { color: string }) {
-  const dots = [
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-  ];
-
-  useEffect(() => {
-    const animations = dots.map((dot, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 150),
-          Animated.timing(dot, { toValue: -6, duration: 300, useNativeDriver: true }),
-          Animated.timing(dot, { toValue: 0,  duration: 300, useNativeDriver: true }),
-          Animated.delay(450),
-        ])
-      )
-    );
-    animations.forEach((a) => a.start());
-    return () => animations.forEach((a) => a.stop());
-  }, []);
-
-  return (
-    <View style={{ flexDirection: "row", gap: wp(2), alignItems: "center", marginTop: hp(1) }}>
-      {dots.map((dot, i) => (
-        <Animated.View
-          key={i}
-          style={{
-            width: wp(2), height: wp(2),
-            borderRadius: wp(1),
-            backgroundColor: color,
-            transform: [{ translateY: dot }],
-          }}
-        />
-      ))}
-    </View>
-  );
-}
-
-// ─── Step indicators at bottom ────────────────────────────────────────────────
-function StepIndicators({
-  total,
-  current,
-  color,
+function ElectrodeColumn({
+  label,
+  impedance,
+  phaseAngle,
+  showDivider,
 }: {
-  total: number;
-  current: number;
-  color: string;
+  label: string;
+  impedance: number;
+  phaseAngle: number;
+  showDivider: boolean;
 }) {
+  const colors = useColors();
+
   return (
-    <View style={{ flexDirection: "row", gap: wp(2), alignItems: "center" }}>
-      {Array.from({ length: total }).map((_, i) => (
-        <View
-          key={i}
+    <View style={{ flexDirection: "row", flex: 1 }}>
+      <View style={{ flex: 1, alignItems: "center" }}>
+        <Text
           style={{
-            height: hp(0.5),
-            width: i === current ? wp(8) : wp(4),
-            borderRadius: 999,
-            backgroundColor: i <= current ? color : color + "33",
+            fontSize: wp(2.5),
+            fontWeight: "600",
+            color: colors.secondaryText,
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+            marginBottom: hp(0.8),
+          }}
+        >
+          {label}
+        </Text>
+
+        <View
+          style={{
+            borderTopWidth: 0.5,
+            borderTopColor: colors.borderColor,
+            paddingTop: hp(0.8),
+            width: "100%",
+            alignItems: "center",
+            marginBottom: hp(0.8),
+          }}
+        >
+          <Text style={{ fontSize: wp(3.2), fontWeight: "600", color: colors.primaryText }}>
+            {impedance.toFixed(2)}
+            <Text style={{ fontSize: wp(2.5), color: colors.secondaryText }}>Ω</Text>
+          </Text>
+
+          <Text style={{ fontSize: wp(2.5), color: colors.secondaryText, marginTop: hp(0.2) }}>
+            Impedance
+          </Text>
+        </View>
+
+        <View
+          style={{
+            borderTopWidth: 0.5,
+            borderTopColor: colors.borderColor,
+            paddingTop: hp(0.8),
+            width: "100%",
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ fontSize: wp(3.2), fontWeight: "600", color: colors.primaryText }}>
+            {phaseAngle.toFixed(2)}
+            <Text style={{ fontSize: wp(2.5), color: colors.secondaryText }}>°</Text>
+          </Text>
+
+          <Text style={{ fontSize: wp(2.5), color: colors.secondaryText, marginTop: hp(0.2) }}>
+            Phase angle
+          </Text>
+        </View>
+      </View>
+
+      {showDivider && (
+        <View
+          style={{
+            width: 0.5,
+            backgroundColor: colors.borderColor,
+            marginHorizontal: wp(1),
           }}
         />
-      ))}
+      )}
     </View>
   );
 }
 
-// ─── Main processing screen ───────────────────────────────────────────────────
-export default function Processing() {
+export default function Result() {
   const colors = useColors();
-  const { readImpedance, readPhaseAngle, connectedDevice } = useBle();
 
-  const [stageIndex, setStageIndex]   = useState(0);
-  const [percent,    setPercent]       = useState(0);
-  const [error,      setError]         = useState<string | null>(null);
+  const params = useLocalSearchParams<{
+    variety?: string;
+    quality?: string;
+    impedance_1?: string;
+    phase_angle_1?: string;
+    impedance_2?: string;
+    phase_angle_2?: string;
+    impedance_3?: string;
+    phase_angle_3?: string;
+    frequency?: string;
+    remarks?: string;
+  }>();
 
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const routeVariety = params.variety;
+  const variety: VarietyId = isValidVarietyId(routeVariety)
+    ? routeVariety
+    : DEFAULT_VARIETY;
 
-  // Animate stage label transition
-  const animateStageChange = (newIndex: number) => {
-    Animated.sequence([
-      Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-    ]).start();
-    setStageIndex(newIndex);
-  };
+  const varietyInfo = getVarietyById(variety);
+
+  const quality = params.quality === "good" ? "good" : "poor";
+
+  const impedance_1 = Number.parseFloat(params.impedance_1 ?? "0");
+  const phase_angle_1 = Number.parseFloat(params.phase_angle_1 ?? "0");
+  const impedance_2 = Number.parseFloat(params.impedance_2 ?? "0");
+  const phase_angle_2 = Number.parseFloat(params.phase_angle_2 ?? "0");
+  const impedance_3 = Number.parseFloat(params.impedance_3 ?? "0");
+  const phase_angle_3 = Number.parseFloat(params.phase_angle_3 ?? "0");
+  const frequency = Number.parseFloat(params.frequency ?? "50");
+  const remarks = params.remarks ?? "";
+
+  const accentColor = quality === "good" ? colors.deviceConnected : colors.deviceDisconnected;
+  const qualityLabel = quality === "good" ? "Good Quality" : "Poor Quality";
+
+  const datetimeRef = useRef(new Date().toISOString());
+  const datetime = datetimeRef.current;
+
+  const contentAnim = useRef(new Animated.Value(0)).current;
+  const hasSavedRef = useRef(false);
 
   useEffect(() => {
-    runAssessment();
+    if (!hasSavedRef.current) {
+      hasSavedRef.current = true;
+
+      try {
+        insertMeasurement({
+          datetime,
+          variety,
+          quality,
+          frequency,
+          impedance_1,
+          phase_angle_1,
+          impedance_2,
+          phase_angle_2,
+          impedance_3,
+          phase_angle_3,
+          remarks,
+        });
+
+        console.log("✅ Measurement saved to database:", {
+          variety,
+          quality,
+        });
+      } catch (error) {
+        console.error("❌ Failed to save measurement:", error);
+      }
+    }
+
+    Animated.timing(contentAnim, {
+      toValue: 1,
+      duration: 500,
+      delay: 900,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
   }, []);
 
-  const runAssessment = async () => {
-    try {
-      if (!connectedDevice) {
-        setError("No device connected");
-        return;
-      }
+  const formattedDate = new Date(datetime).toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  });
 
-      // ── Stage 0: Applying Signal ──
-      animateStageChange(0);
-      setPercent(10);
-
-      // Subscribe to BLE notifications from ESP32 status characteristic
-      // ESP32 sends stage updates as UTF-8 strings e.g. "stage:1", "stage:2"
-      // 🔄 Replace BLE_UUIDS.STATUS with your actual status characteristic UUID
-      // connectedDevice.monitorCharacteristicForService(
-      //   BLE_UUIDS.SERVICE,
-      //   BLE_UUIDS.STATUS,
-      //   (error, char) => {
-      //     if (char?.value) {
-      //       const msg = Buffer.from(char.value, "base64").toString("utf-8");
-      //       if (msg === "stage:1") { animateStageChange(1); setPercent(40); }
-      //       if (msg === "stage:2") { animateStageChange(2); setPercent(65); }
-      //       if (msg === "stage:3") { animateStageChange(3); setPercent(85); }
-      //     }
-      //   }
-      // );
-
-      // ── Simulated stage progression (replace with real BLE notifications) ──
-      await delay(1200);
-      animateStageChange(1);
-      setPercent(35);
-
-      // ── Stage 1: Read impedance from ESP32 ──
-      const impedance = await readImpedance();
-      await delay(800);
-      animateStageChange(2);
-      setPercent(65);
-
-      // ── Stage 2: Read phase angle from ESP32 ──
-      const phaseAngle = await readPhaseAngle();
-      await delay(800);
-
-      if (impedance === null || phaseAngle === null) {
-        setError("Failed to read data from device");
-        return;
-      }
-
-      // ── Stage 3: AI analyzing ──
-      animateStageChange(3);
-      setPercent(85);
-
-      // 🔄 Replace this with your actual TensorFlow Lite model inference
-      // Example:
-      // const model = await loadTFLiteModel();
-      // const result = await model.predict([[impedance, phaseAngle]]);
-      // const quality = result[0] > 0.5 ? "good" : "poor";
-
-      // Placeholder threshold — replace with TFLite output
-      await delay(1000);
-      const quality: "good" | "poor" = impedance > 100 ? "good" : "poor";
-      const frequency = 1000; // 🔄 Replace with actual frequency from ESP32
-
-      setPercent(100);
-      await delay(500);
-
-      // ── Navigate to result screen with data ──
-      router.replace({
-        pathname: "/assessment/result" as any,
-        params: {
-          quality,
-          impedance:  String(impedance),
-          phaseAngle: String(phaseAngle),
-          frequency:  String(frequency),
-        },
-      });
-
-    } catch (e) {
-      console.error("Assessment error:", e);
-      setError("An error occurred during assessment");
-    }
-  };
-
-  const stage = STAGES[stageIndex];
+  const formattedTime = new Date(datetime).toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 
   return (
     <SafeAreaView
@@ -260,93 +328,258 @@ export default function Processing() {
       style={{ backgroundColor: colors.background }}
       edges={["top", "bottom"]}
     >
-      {/* Title */}
-      <Text
+      <View
         style={{
-          fontSize: wp(5.5),
-          fontWeight: "bold",
-          color: colors.primaryText,
-          marginTop: hp(3),
+          width: "100%",
+          alignItems: "center",
+          marginTop: hp(2),
+          marginBottom: hp(1.5),
+          gap: hp(0.6),
+          paddingHorizontal: wp(6),
         }}
       >
-        Processing
-      </Text>
+        <Text
+          style={{
+            fontSize: wp(5.5),
+            fontWeight: "bold",
+            color: colors.primaryText,
+          }}
+        >
+          Result
+        </Text>
 
-      {/* Circular progress */}
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <View style={{ alignItems: "center", justifyContent: "center" }}>
-          <CircularProgress percent={percent} color={colors.primary} />
+        <Text
+          style={{
+            fontSize: wp(2.8),
+            color: colors.secondaryText,
+            fontWeight: "600",
+            letterSpacing: 1,
+            textTransform: "uppercase",
+            textAlign: "center",
+          }}
+        >
+          Bioimpedance Measurement Analysis
+        </Text>
 
-          {/* Percent + dots centered inside ring */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: wp(1.5),
+            backgroundColor: varietyInfo.color + "18",
+            borderRadius: wp(2),
+            borderWidth: 0.5,
+            borderColor: varietyInfo.color + "55",
+            paddingHorizontal: wp(3),
+            paddingVertical: hp(0.5),
+            marginTop: hp(0.5),
+          }}
+        >
           <View
             style={{
-              position: "absolute",
-              alignItems: "center",
+              width: wp(1.8),
+              height: wp(1.8),
+              borderRadius: wp(2),
+              backgroundColor: varietyInfo.color,
+            }}
+          />
+
+          <Text
+            style={{
+              fontSize: wp(3),
+              fontWeight: "700",
+              color: varietyInfo.color,
             }}
           >
-            <Text
-              style={{
-                fontSize: wp(10),
-                fontWeight: "bold",
-                color: colors.primaryText,
-                letterSpacing: -1,
-              }}
-            >
-              {percent}
-              <Text style={{ fontSize: wp(4), fontWeight: "400", color: colors.secondaryText }}>
-                %
-              </Text>
-            </Text>
-            <BouncingDots color={colors.primary} />
-          </View>
+            {varietyInfo.label} Variety
+          </Text>
         </View>
 
-        {/* Stage label */}
+        <Text style={{ fontSize: wp(2.8), color: colors.secondaryText }}>
+          {formattedDate}, {formattedTime}
+        </Text>
+      </View>
+
+      <View
+        className="flex-1 items-center justify-center"
+        style={{ width: "100%", paddingHorizontal: wp(6) }}
+      >
+        <ResultCircle quality={quality} accentColor={accentColor} />
+
         <Animated.View
+          className="items-center"
           style={{
-            opacity: fadeAnim,
-            alignItems: "center",
-            marginTop: hp(4),
+            opacity: contentAnim,
+            transform: [
+              {
+                translateY: contentAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [16, 0],
+                }),
+              },
+            ],
+            marginTop: hp(3),
             gap: hp(0.8),
           }}
         >
+          <Text style={{ fontSize: wp(6), fontWeight: "bold", color: colors.primaryText }}>
+            {qualityLabel}
+          </Text>
+
           <Text
             style={{
-              fontSize: wp(5),
-              fontWeight: "bold",
-              color: colors.primaryText,
+              fontSize: wp(3.5),
+              color: colors.secondaryText,
+              textAlign: "center",
+              paddingHorizontal: wp(4),
+              lineHeight: wp(5.5),
             }}
           >
-            {error ?? stage.label}
+            {remarks}
           </Text>
-          {!error && (
-            <Text
-              style={{
-                fontSize: wp(3.5),
-                color: colors.secondaryText,
-                textAlign: "center",
-                paddingHorizontal: wp(8),
-              }}
-            >
-              {stage.detail}
-            </Text>
-          )}
         </Animated.View>
 
-        {/* Step indicators */}
-        <View style={{ marginTop: hp(4) }}>
-          <StepIndicators
-            total={STAGES.length}
-            current={stageIndex}
-            color={colors.primary}
-          />
-        </View>
+        <Animated.View
+          style={{
+            opacity: contentAnim,
+            width: "100%",
+            marginTop: hp(2.5),
+            backgroundColor: colors.cardColor,
+            borderRadius: wp(4),
+            borderWidth: 0.5,
+            borderColor: colors.borderColor,
+            overflow: "hidden",
+          }}
+        >
+          <View style={{ height: hp(0.5), backgroundColor: accentColor }} />
+
+          <View style={{ padding: wp(3) }}>
+            <Text
+              style={{
+                fontSize: wp(2.8),
+                fontWeight: "600",
+                color: colors.secondaryText,
+                textTransform: "uppercase",
+                letterSpacing: 0.6,
+                marginBottom: hp(1.2),
+              }}
+            >
+              Electrode readings
+            </Text>
+
+            <View
+              style={{
+                flexDirection: "row",
+                backgroundColor: colors.background,
+                borderRadius: wp(3),
+                borderWidth: 0.5,
+                borderColor: colors.borderColor,
+                padding: wp(3),
+              }}
+            >
+              <ElectrodeColumn
+                label="Electrode 1"
+                impedance={impedance_1}
+                phaseAngle={phase_angle_1}
+                showDivider={true}
+              />
+
+              <ElectrodeColumn
+                label="Electrode 2"
+                impedance={impedance_2}
+                phaseAngle={phase_angle_2}
+                showDivider={true}
+              />
+
+              <ElectrodeColumn
+                label="Electrode 3"
+                impedance={impedance_3}
+                phaseAngle={phase_angle_3}
+                showDivider={false}
+              />
+            </View>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                backgroundColor: colors.background,
+                borderRadius: wp(3),
+                borderWidth: 0.5,
+                borderColor: colors.borderColor,
+                paddingHorizontal: wp(4),
+                paddingVertical: hp(1),
+                marginTop: hp(1),
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: wp(2.8),
+                  color: colors.secondaryText,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                }}
+              >
+                Frequency
+              </Text>
+
+              <Text style={{ fontSize: wp(3.5), fontWeight: "600", color: colors.primaryText }}>
+                {frequency}
+                <Text style={{ fontSize: wp(2.8), color: colors.secondaryText }}> kHz</Text>
+              </Text>
+            </View>
+          </View>
+        </Animated.View>
+
+        <Animated.View
+          style={{
+            opacity: contentAnim,
+            width: "100%",
+            marginTop: hp(3),
+            gap: hp(1.5),
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => router.replace("/(tabs)/statistics" as any)}
+            activeOpacity={0.85}
+            style={{
+              width: "100%",
+              paddingVertical: hp(2),
+              borderRadius: wp(999),
+              backgroundColor: colors.primary,
+              alignItems: "center",
+              shadowColor: colors.primary,
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.3,
+              shadowRadius: 12,
+              elevation: 4,
+            }}
+          >
+            <Text style={{ fontSize: wp(4), fontWeight: "700", color: "#fff" }}>
+              View Statistics
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.replace("/(tabs)/home" as any)}
+            activeOpacity={0.8}
+            style={{
+              width: "100%",
+              paddingVertical: hp(2),
+              borderRadius: wp(999),
+              borderWidth: 1,
+              borderColor: colors.borderColor,
+              alignItems: "center",
+              backgroundColor: colors.cardColor,
+            }}
+          >
+            <Text style={{ fontSize: wp(4), fontWeight: "600", color: colors.secondaryText }}>
+              Go Back
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
       </View>
     </SafeAreaView>
   );
-}
-
-// Helper
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

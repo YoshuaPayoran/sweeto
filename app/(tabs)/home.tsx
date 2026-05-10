@@ -1,11 +1,10 @@
 import { BluetoothIcon, MoonIcon, SunIcon } from "@/components/icons";
 import Button from "@/components/ui/Button";
 import TotalScannedCard from "@/components/ui/TotalScannedCard";
-import { BLE_UUIDS } from "@/constants/config";
 import { useBle } from "@/context/BleContext";
 import { useColors } from "@/hooks/useColors";
 import { hp, wp } from "@/hooks/useResponsive";
-import { Buffer } from "buffer";
+import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -51,41 +50,12 @@ export default function Home() {
     : "Not Connected";
 
   const startAssessment = async () => {
-    if (!connectedDevice) return;
-
-    try {
-      // Send "start" command to ESP32
-      await connectedDevice.writeCharacteristicWithResponseForService(
-        BLE_UUIDS.SERVICE,
-        BLE_UUIDS.IMPEDANCE,
-        Buffer.from("start").toString("base64")
-      );
-      console.log("Command sent");
-
-      // Small delay before reading (allow ESP32 to notify)
-      setTimeout(async () => {
-        // Read impedance
-        const impChar = await connectedDevice.readCharacteristicForService(
-          BLE_UUIDS.SERVICE,
-          BLE_UUIDS.IMPEDANCE
-        );
-        const impValue = Buffer.from(impChar.value!, "base64").readFloatLE(0);
-        setImpedance(impValue);
-
-        // Read phase
-        const phaseChar = await connectedDevice.readCharacteristicForService(
-          BLE_UUIDS.SERVICE,
-          BLE_UUIDS.PHASE_ANGLE
-        );
-        const phaseValue = Buffer.from(phaseChar.value!, "base64").readFloatLE(0);
-        setPhase(phaseValue);
-
-        console.log("BLE data received:", { impedance: impValue, phase: phaseValue });
-      }, 500);
-
-    } catch (e) {
-      console.error("BLE error:", e);
+    if (!connectedDevice) {
+      console.log("No BLE device connected");
+      return;
     }
+
+    router.push("/assessment/processing");
   };
 
   return (

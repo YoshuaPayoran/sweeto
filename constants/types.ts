@@ -1,11 +1,10 @@
-/**
- * Shared TypeScript types used across hooks, contexts, and components.
- */
-
 export type AssessmentResult = {
   quality: "good" | "poor";
-  impedanceMagnitude: number;
-  phaseAngle: number;
+  electrodes: {
+    impedance: number;
+    phaseAngle: number;
+  }[];
+  frequency: number;
 };
 
 export type AssessmentStatus =
@@ -17,9 +16,19 @@ export type AssessmentStatus =
 
 export type Measurement = {
   id: string;
+
+  variety: "yellow" | "purple" | "orange";
+
   quality: "good" | "poor";
-  impedanceMagnitude: number;
-  phaseAngle: number;
-  frequency: number;
+
   datetime: string;
+
+  frequency: number;
+
+  remarks: string;
+
+  electrodes: {
+    impedance: number;
+    phaseAngle: number;
+  }[];
 };

@@ -1,33 +1,45 @@
 import { BLE_UUIDS } from "@/constants/config";
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { bleManager } from "@/services/ble_manager";
+import { Buffer } from "buffer";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { PermissionsAndroid, Platform } from "react-native";
-import { BleManager, Device, State } from "react-native-ble-plx";
-
-// ─── Permission helper ────────────────────────────────────────────────────────
+import { Device, State } from "react-native-ble-plx";
 
 async function requestBlePermissions(): Promise<boolean> {
-  if (Platform.OS !== "android") return true; // iOS handles via Info.plist
+  if (Platform.OS !== "android") return true;
 
   if (Platform.Version >= 31) {
-    // Android 12+
     const results = await PermissionsAndroid.requestMultiple([
       PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
       PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
       PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
     ]);
+
     return Object.values(results).every(
-      (r) => r === PermissionsAndroid.RESULTS.GRANTED
+      (result) => result === PermissionsAndroid.RESULTS.GRANTED
     );
-  } else {
-    // Android 11 and below
-    const result = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-    );
-    return result === PermissionsAndroid.RESULTS.GRANTED;
   }
+
+  const result = await PermissionsAndroid.request(
+    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+  );
+
+  return result === PermissionsAndroid.RESULTS.GRANTED;
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+type BleResult = {
+  pair: string;
+  impedance: number;
+  phaseAngle: number;
+  magnitude: number;
+};
 
 type BleContextType = {
   bleState: State;
@@ -37,10 +49,12 @@ type BleContextType = {
   isScanning: boolean;
   isConnecting: boolean;
   scannedDevices: Device[];
-  startScan: () => void;
+  latestResult: BleResult | null;
+  startScan: () => Promise<void>;
   stopScan: () => void;
   connectToDevice: (device: Device) => Promise<void>;
   disconnectDevice: () => Promise<void>;
+  readResult: () => Promise<BleResult | null>;
   readImpedance: () => Promise<number | null>;
   readPhaseAngle: () => Promise<number | null>;
   requestPermissions: () => Promise<boolean>;
@@ -48,139 +62,319 @@ type BleContextType = {
 
 const BleContext = createContext<BleContextType>({} as BleContextType);
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
-
 export function BleProvider({ children }: { children: React.ReactNode }) {
-  const manager = useRef(new BleManager()).current;
+  const manager = bleManager;
 
-  const [bleState, setBleState]               = useState<State>(State.Unknown);
+  const [bleState, setBleState] = useState<State>(State.Unknown);
   const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
-  const [isScanning, setIsScanning]           = useState(false);
-  const [isConnecting, setIsConnecting]       = useState(false);
-  const [scannedDevices, setScannedDevices]   = useState<Device[]>([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [scannedDevices, setScannedDevices] = useState<Device[]>([]);
+  const [latestResult, setLatestResult] = useState<BleResult | null>(null);
+
+  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const disconnectSubRef = useRef<any>(null);
+  const mountedRef = useRef(true);
 
   const isConnected = !!connectedDevice;
-  const deviceName  = connectedDevice?.name ?? null;
+  const deviceName = connectedDevice?.name ?? null;
+
+  const safeBleErrorLog = (label: string, error: any) => {
+    console.warn(label, {
+      message: error?.message,
+      reason: error?.reason,
+      errorCode: error?.errorCode,
+      attErrorCode: error?.attErrorCode,
+      androidErrorCode: error?.androidErrorCode,
+      name: error?.name,
+    });
+  };
 
   useEffect(() => {
-    const sub = manager.onStateChange(setBleState, true);
+    mountedRef.current = true;
+
+    const sub = manager.onStateChange((state) => {
+      if (mountedRef.current) {
+        setBleState(state);
+      }
+    }, true);
+
     return () => {
-      sub.remove();
-      manager.destroy();
+      mountedRef.current = false;
+
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current);
+        scanTimeoutRef.current = null;
+      }
+
+      try {
+        manager.stopDeviceScan();
+      } catch {}
+
+      try {
+        disconnectSubRef.current?.remove?.();
+        disconnectSubRef.current = null;
+      } catch {}
+
+      try {
+        sub.remove();
+      } catch {}
+
+      // IMPORTANT:
+      // Huwag i-destroy ang singleton bleManager dito.
+      // manager.destroy();
     };
-  }, []);
+  }, [manager]);
 
   const stopScan = useCallback(() => {
-    manager.stopDeviceScan();
-    setIsScanning(false);
-  }, []);
+    try {
+      manager.stopDeviceScan();
+    } catch (error) {
+      safeBleErrorLog("[BLE] stopScan error:", error);
+    }
+
+    if (scanTimeoutRef.current) {
+      clearTimeout(scanTimeoutRef.current);
+      scanTimeoutRef.current = null;
+    }
+
+    if (mountedRef.current) {
+      setIsScanning(false);
+    }
+  }, [manager]);
 
   const startScan = useCallback(async () => {
-    if (isScanning || bleState !== State.PoweredOn) return;
+    if (isScanning || isConnecting) return;
 
-    const granted = await requestBlePermissions();
-    if (!granted) {
-      console.warn("BLE permissions not granted");
-      return;
-    }
+    try {
+      if (bleState !== State.PoweredOn) {
+        console.warn("[BLE] Bluetooth is not powered on:", bleState);
+        return;
+      }
 
-    setScannedDevices([]);
-    setIsScanning(true);
+      const granted = await requestBlePermissions();
 
-    // Small delay to let recently disconnected devices start re-advertising
-    await new Promise((resolve) => setTimeout(resolve, 500));
+      if (!granted) {
+        console.warn("[BLE] Permissions not granted");
+        return;
+      }
 
-    manager.startDeviceScan(
-      null,
-      { allowDuplicates: false, scanMode: 2 }, // scanMode 2 = SCAN_MODE_LOW_LATENCY
-      (error, device) => {
-        if (error) {
-          console.error("Scan error:", error);
-          setIsScanning(false);
-          return;
+      try {
+        manager.stopDeviceScan();
+      } catch {}
+
+      if (mountedRef.current) {
+        setScannedDevices([]);
+        setIsScanning(true);
+      }
+
+      manager.startDeviceScan(
+        null,
+        { allowDuplicates: false, scanMode: 2 },
+        (error, device) => {
+          if (error) {
+            safeBleErrorLog("[BLE] Scan error:", error);
+
+            if (mountedRef.current) {
+              setIsScanning(false);
+            }
+
+            return;
+          }
+
+          if (!device || !mountedRef.current) return;
+
+          setScannedDevices((prev) => {
+            const exists = prev.some((d) => d.id === device.id);
+            return exists ? prev : [...prev, device];
+          });
         }
-        if (device) {
-          setScannedDevices((prev) =>
-            prev.find((d) => d.id === device.id) ? prev : [...prev, device]
-          );
+      );
+
+      scanTimeoutRef.current = setTimeout(() => {
+        stopScan();
+      }, 10_000);
+    } catch (error) {
+      safeBleErrorLog("[BLE] startScan failed:", error);
+
+      if (mountedRef.current) {
+        setIsScanning(false);
+      }
+    }
+  }, [isScanning, isConnecting, bleState, manager, stopScan]);
+
+  const connectToDevice = useCallback(
+    async (device: Device) => {
+      stopScan();
+
+      if (mountedRef.current) {
+        setIsConnecting(true);
+      }
+
+      try {
+        const connected = await manager.connectToDevice(device.id, {
+          timeout: 10000,
+        });
+
+        const discovered =
+          await connected.discoverAllServicesAndCharacteristics();
+
+        if (!mountedRef.current) return;
+
+        setConnectedDevice(discovered);
+        setLatestResult(null);
+
+        try {
+          disconnectSubRef.current?.remove?.();
+        } catch {}
+
+        disconnectSubRef.current = manager.onDeviceDisconnected(
+          discovered.id,
+          (error) => {
+            if (error) {
+              safeBleErrorLog("[BLE] Device disconnected with error:", error);
+            } else {
+              console.log("[BLE] Device disconnected:", discovered.id);
+            }
+
+            if (mountedRef.current) {
+              setConnectedDevice(null);
+              setLatestResult(null);
+            }
+          }
+        );
+      } catch (error) {
+        safeBleErrorLog("[BLE] connectToDevice error:", error);
+
+        if (mountedRef.current) {
+          setConnectedDevice(null);
+          setLatestResult(null);
+        }
+      } finally {
+        if (mountedRef.current) {
+          setIsConnecting(false);
         }
       }
-    );
-
-    setTimeout(stopScan, 10_000);
-  }, [isScanning, bleState, stopScan]);
-
-  const connectToDevice = useCallback(async (device: Device) => {
-    stopScan();
-    setIsConnecting(true);
-    try {
-      const connected = await manager.connectToDevice(device.id);
-      await connected.discoverAllServicesAndCharacteristics();
-      setConnectedDevice(connected);
-
-      // Listen for unexpected disconnection
-      manager.onDeviceDisconnected(device.id, (error, disconnectedDevice) => {
-        console.log("Device disconnected:", disconnectedDevice?.id);
-        setConnectedDevice(null);
-      });
-
-    } catch (e) {
-      console.error("BLE connect error:", e);
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [stopScan]);
+    },
+    [manager, stopScan]
+  );
 
   const disconnectDevice = useCallback(async () => {
     if (!connectedDevice) return;
-    try {
-      await manager.cancelDeviceConnection(connectedDevice.id);
-    } catch (e) {
-      console.error("Disconnect error:", e);
-    } finally {
-      setConnectedDevice(null);
-      // Give device time to start re-advertising before next scan
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-  }, [connectedDevice]);
 
-  const readCharacteristic = useCallback(async (
-    characteristicUUID: string
-  ): Promise<number | null> => {
+    try {
+      stopScan();
+
+      try {
+        disconnectSubRef.current?.remove?.();
+        disconnectSubRef.current = null;
+      } catch {}
+
+      await manager.cancelDeviceConnection(connectedDevice.id);
+    } catch (error) {
+      safeBleErrorLog("[BLE] disconnectDevice error:", error);
+    } finally {
+      if (mountedRef.current) {
+        setConnectedDevice(null);
+        setLatestResult(null);
+        setIsConnecting(false);
+      }
+    }
+  }, [connectedDevice, manager, stopScan]);
+
+  const parseBleResult = useCallback((decoded: string): BleResult | null => {
+    try {
+      if (!decoded.startsWith("RESULT:")) {
+        console.warn("[BLE] Invalid result format:", decoded);
+        return null;
+      }
+
+      const clean = decoded.replace("RESULT:", "").trim();
+      const [pair, impedance, phaseAngle, magnitude] = clean.split(",");
+
+      const parsedResult: BleResult = {
+        pair,
+        impedance: Number(impedance),
+        phaseAngle: Number(phaseAngle),
+        magnitude: Number(magnitude),
+      };
+
+      if (
+        !parsedResult.pair ||
+        !Number.isFinite(parsedResult.impedance) ||
+        !Number.isFinite(parsedResult.phaseAngle) ||
+        !Number.isFinite(parsedResult.magnitude)
+      ) {
+        console.warn("[BLE] Failed to parse result:", decoded);
+        return null;
+      }
+
+      return parsedResult;
+    } catch (error) {
+      safeBleErrorLog("[BLE] parseBleResult error:", error);
+      return null;
+    }
+  }, []);
+
+  const readResult = useCallback(async (): Promise<BleResult | null> => {
     if (!connectedDevice) return null;
+
     try {
       const char = await connectedDevice.readCharacteristicForService(
         BLE_UUIDS.SERVICE,
-        characteristicUUID
+        BLE_UUIDS.RESULT
       );
+
       if (!char.value) return null;
-      return Buffer.from(char.value, "base64").readFloatLE(0);
-    } catch (e) {
-      console.error(`Read error [${characteristicUUID}]:`, e);
+
+      const decoded = Buffer.from(char.value, "base64")
+        .toString("utf-8")
+        .trim();
+
+      const result = parseBleResult(decoded);
+
+      if (result && mountedRef.current) {
+        setLatestResult(result);
+      }
+
+      return result;
+    } catch (error) {
+      safeBleErrorLog("[BLE] readResult error:", error);
       return null;
     }
-  }, [connectedDevice]);
+  }, [connectedDevice, parseBleResult]);
 
-  const readImpedance  = useCallback(() => readCharacteristic(BLE_UUIDS.IMPEDANCE),   [readCharacteristic]);
-  const readPhaseAngle = useCallback(() => readCharacteristic(BLE_UUIDS.PHASE_ANGLE), [readCharacteristic]);
+  const readImpedance = useCallback(async (): Promise<number | null> => {
+    const result = await readResult();
+    return result?.impedance ?? null;
+  }, [readResult]);
+
+  const readPhaseAngle = useCallback(async (): Promise<number | null> => {
+    const result = await readResult();
+    return result?.phaseAngle ?? null;
+  }, [readResult]);
 
   return (
-    <BleContext.Provider value={{
-      bleState,
-      connectedDevice,
-      isConnected,
-      deviceName,
-      isScanning,
-      isConnecting,
-      scannedDevices,
-      startScan,
-      stopScan,
-      connectToDevice,
-      disconnectDevice,
-      readImpedance,
-      readPhaseAngle,
-      requestPermissions: requestBlePermissions,
-    }}>
+    <BleContext.Provider
+      value={{
+        bleState,
+        connectedDevice,
+        isConnected,
+        deviceName,
+        isScanning,
+        isConnecting,
+        scannedDevices,
+        latestResult,
+        startScan,
+        stopScan,
+        connectToDevice,
+        disconnectDevice,
+        readResult,
+        readImpedance,
+        readPhaseAngle,
+        requestPermissions: requestBlePermissions,
+      }}
+    >
       {children}
     </BleContext.Provider>
   );

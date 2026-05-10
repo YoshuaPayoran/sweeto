@@ -1,6 +1,8 @@
 import { BluetoothIcon, ChevronIcon, MoonIcon, SettingsIcon } from "@/components/icons";
 import DeviceScanModal from "@/components/ui/DeviceScanModal";
+import { VARIETIES, Variety } from "@/constants/varieties";
 import { useBle } from "@/context/BleContext";
+import { useVariety } from "@/context/VarietyContext";
 import { useColors } from "@/hooks/useColors";
 import { hp, wp } from "@/hooks/useResponsive";
 import React, { useState } from "react";
@@ -116,11 +118,126 @@ function SettingRow({
   );
 }
 
+// ─── Variety Selector ─────────────────────────────────────────────────────────
+
+function VarietySelector() {
+  const colors = useColors();
+  const { selectedVariety, setVariety, isLoadingVariety } = useVariety();
+
+  if (isLoadingVariety) {
+    return (
+      <View style={{ 
+        padding: wp(4), 
+        alignItems: "center",
+        backgroundColor: colors.cardColor,
+        borderRadius: wp(4),
+      }}>
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <Section>
+      {VARIETIES.map((variety: Variety, index: number) => {
+        const isSelected = selectedVariety.id === variety.id;
+        // ... rest ng code mo, same
+        const isLast = index === VARIETIES.length - 1;
+
+        return (
+          <TouchableOpacity
+            key={variety.id}
+            onPress={() => setVariety(variety.id)}
+            activeOpacity={0.7}
+            className="flex-row items-center"
+            style={{
+              paddingHorizontal: wp(4),
+              paddingVertical: hp(1.8),
+              gap: wp(3),
+              borderBottomWidth: isLast ? 0 : 1,
+              borderBottomColor: colors.borderColor,
+            }}
+          >
+            {/* Color dot icon */}
+            <View
+              className="items-center justify-center"
+              style={{
+                width: wp(9),
+                height: wp(9),
+                borderRadius: wp(2.5),
+                backgroundColor: variety.color + "22",
+              }}
+            >
+              <View
+                style={{
+                  width: wp(4),
+                  height: wp(4),
+                  borderRadius: wp(2),
+                  backgroundColor: variety.color,
+                }}
+              />
+            </View>
+
+            {/* Label + description */}
+            <View className="flex-1" style={{ gap: hp(0.3) }}>
+              <Text
+                style={{
+                  fontSize: wp(3.5),
+                  fontWeight: "600",
+                  color: isSelected ? variety.color : colors.primaryText,
+                }}
+              >
+                {variety.label}
+              </Text>
+              <Text style={{ fontSize: wp(3), color: colors.secondaryText }}>
+                {variety.description}
+              </Text>
+            </View>
+
+            {/* Checkmark if selected */}
+            {isSelected ? (
+              <View
+                style={{
+                  width: wp(5.5),
+                  height: wp(5.5),
+                  borderRadius: wp(3),
+                  backgroundColor: variety.color,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ color: "#fff", fontSize: wp(3), fontWeight: "bold" }}>✓</Text>
+              </View>
+            ) : (
+              <View
+                style={{
+                  width: wp(5.5),
+                  height: wp(5.5),
+                  borderRadius: wp(3),
+                  borderWidth: 1.5,
+                  borderColor: colors.borderColor,
+                }}
+              />
+            )}
+          </TouchableOpacity>
+        );
+      })}
+    </Section>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function Settings() {
   const colors = useColors();
-  const { isConnected, isScanning, isConnecting, deviceName, startScan, disconnectDevice, bleState } = useBle();
+  const {
+    isConnected,
+    isScanning,
+    isConnecting,
+    deviceName,
+    disconnectDevice,
+    bleState,
+  } = useBle();
   const [scanModalVisible, setScanModalVisible] = useState(false);
 
   const bleStatusColor = isConnected
@@ -142,7 +259,7 @@ export default function Settings() {
     : isConnecting || isScanning
     ? "Please wait..."
     : bleState !== State.PoweredOn
-    ? "Turn on your Bluetooth"       
+    ? "Turn on your Bluetooth"
     : "Tap to connect your device";
 
   const deviceStatusColor = isConnected
@@ -245,6 +362,11 @@ export default function Settings() {
           />
         </Section>
 
+        {/* Sweet Potato Variety */}
+        <SectionLabel title="Sweet Potato Variety" marginTop />
+
+        <VarietySelector />
+
         {/* Preferences */}
         <SectionLabel title="Preferences" marginTop />
         <Section>
@@ -274,9 +396,10 @@ export default function Settings() {
             title="Bluetooth"
             subtitle={bleSubtitle}
             showBorder={isConnected}
-            onPress={!isConnected && !isScanning && !isConnecting && bleState === State.PoweredOn
-              ? () => setScanModalVisible(true)
-              : undefined
+            onPress={
+              !isConnected && !isScanning && !isConnecting && bleState === State.PoweredOn
+                ? () => setScanModalVisible(true)
+                : undefined
             }
             right={
               isScanning || isConnecting ? (
@@ -291,7 +414,13 @@ export default function Settings() {
                       backgroundColor: colors.deviceConnected,
                     }}
                   />
-                  <Text style={{ fontSize: wp(3.2), fontWeight: "600", color: colors.deviceConnected }}>
+                  <Text
+                    style={{
+                      fontSize: wp(3.2),
+                      fontWeight: "600",
+                      color: colors.deviceConnected,
+                    }}
+                  >
                     {bleStatusText}
                   </Text>
                 </View>
@@ -333,6 +462,7 @@ export default function Settings() {
           </Text>
         </View>
       </ScrollView>
+
       <DeviceScanModal
         visible={scanModalVisible}
         onClose={() => setScanModalVisible(false)}

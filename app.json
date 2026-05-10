@@ -38,6 +38,7 @@
     },
     "plugins": [
       "expo-router",
+      "onnxruntime-react-native",
       [
         "react-native-ble-plx",
         {
@@ -61,7 +62,16 @@
           }
         }
       ],
-      "expo-build-properties",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 35,
+            "minSdkVersion": 26
+          }
+        }
+      ],
       "expo-sqlite"
     ],
     "experiments": {
@@ -71,8 +81,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "5659033a-8192-4632-8819-8a00f215a616"
+        "projectId": "84941862-1aaa-4e94-b351-98616adf0894"
       }
-    }
+    },
+    "owner": "imnott_shva"
   }
 }

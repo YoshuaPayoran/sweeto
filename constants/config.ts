@@ -1,8 +1,6 @@
 /**
  * App-wide constants — storage keys, UUIDs, BLE config, static data, colors.
  * Import everything from "@/constants" — no need to reach into sub-files.
- *
- * e.g. import { STORAGE_KEYS, BLE_UUIDS, Colors, ASSESSMENT_STEPS } from "@/constants"
  */
 
 export { Colors } from "./colors";
@@ -14,20 +12,50 @@ export const STORAGE_KEYS = {
 } as const;
 
 // ─── BLE UUIDs ────────────────────────────────────────────────────────────────
-// ⚠️ MUST MATCH YOUR ESP32 FIRMWARE EXACTLY
-// Verify with nRF Connect app → check the service UUIDs
 export const BLE_UUIDS = {
-  SERVICE:    "12345678-1234-1234-1234-1234567890ab", // 🔄 replace with real UUID
-  IMPEDANCE:  "abcd1234-5678-90ab-cdef-1234567890ab", // 🔄 replace with real UUID
-  PHASE_ANGLE:"abcd1234-5678-90ab-cdef-1234567890ac", // 🔄 replace with real UUID
+  SERVICE: "12345678-1234-1234-1234-1234567890ab",
+  COMMAND: "12345678-1234-1234-1234-1234567890ac",
+  STATUS: "12345678-1234-1234-1234-1234567890ad",
+  RESULT: "12345678-1234-1234-1234-1234567890ae",
 } as const;
 
-// ─── Assessment ───────────────────────────────────────────────────────────────
+// ─── Assessment Steps ─────────────────────────────────────────────────────────
+
 export const ASSESSMENT_STEPS = [
-  { label: "Reading",    detail: "Capturing impedance signal from ESP32" },
-  { label: "Measuring",  detail: "Receiving phase angle data" },
-  { label: "Analyzing",  detail: "Running AI analysis on device" },
-  { label: "Finalizing", detail: "Preparing your result" },
+  {
+    key: "ASSESSMENT_STARTED",
+    label: "Assessment Started",
+    detail: "Preparing bioimpedance assessment",
+    percent: 10,
+  },
+  {
+    key: "APPLYING_SIGNAL",
+    label: "Applying AC Signal",
+    detail: "Sending 50 kHz AC signal to the sweet potato",
+    percent: 25,
+  },
+  {
+    key: "READING_RAW_DATA",
+    label: "Reading Raw Data",
+    detail: "Collecting real and imaginary values from AD5933",
+    percent: 45,
+  },
+  {
+    key: "COMPUTING_IMPEDANCE_PHASE",
+    label: "Computing Data",
+    detail: "Calculating impedance and phase angle",
+    percent: 65,
+  },
+  {
+    key: "AI_ANALYZING_DATA",
+    label: "AI Analyzing Data",
+    detail: "Classifying sweet potato quality",
+    percent: 85,
+  },
+  {
+    key: "FINALIZING_DATA",
+    label: "Finalizing Result",
+    detail: "Preparing quality label and description",
+    percent: 95,
+  },
 ] as const;
-
-
